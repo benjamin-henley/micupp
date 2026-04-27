@@ -352,7 +352,7 @@
         </div>
       </div>
 
-      <div class="peer-hint" id="peer-hint">⚡ TEAMMATE WANTS TO QUEUE</div>
+      <div class="checkmark-overlay" id="checkmark-overlay" style="display:none;position:absolute;inset:0;flex-items:center;justify-content:center;background:rgba(0,166,82,0.9);border-radius:8px;font-size:80px;">✓</div>
     </div>
 
     <div class="bottom-bar">
@@ -377,6 +377,9 @@
   </div>
 
   <audio id="remote-audio" autoplay playsinline></audio>
+  <audio id="ding-sound" preload="auto">
+    <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj==" type="audio/wav">
+  </audio>
 
   <script>
     const SERVER_URL = "https://micupp-production.up.railway.app";
@@ -388,6 +391,7 @@
     let micMuted = false, myVotedQueue = false;
     let profilePicDataUrl = null;
     let myProfile = { displayName: "", username: "", rank: "", role: "", region: "", pic: null };
+    let audioContext = null, analyser = null, micAnalysisInterval = null;
 
     const $ = id => document.getElementById(id);
 
@@ -444,7 +448,7 @@
       $("peer-avatar").innerHTML = defaultAvatarSVG;
       $("searching-overlay").style.display = "flex";
       $("peer-connected").style.display = "none";
-      $("peer-hint").classList.remove("show");
+      $("checkmark-overlay").style.display = "none";
     }
 
     function setStatus(state) {
@@ -475,8 +479,31 @@
 
     // WebRTC
     async function getMic() {
-      try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); return true; }
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        startAudioAnalysis();
+        return true;
+      }
       catch { alert("Microphone access is required. Please allow it and refresh."); return false; }
+    }
+
+    function startAudioAnalysis() {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      if (!analyser) {
+        const source = audioContext.createMediaStreamSource(localStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+      }
+      if (!micAnalysisInterval) {
+        micAnalysisInterval = setInterval(() => {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          const isActive = !micMuted && avg > 15;
+          $("your-avatar").classList.toggle("mic-active", isActive);
+        }, 100);
+      }
     }
 
     function createPeerConnection() {
@@ -534,7 +561,11 @@
       socket.on("webrtc_offer", async ({ offer }) => await handleOffer(offer));
       socket.on("webrtc_answer", async ({ answer }) => await handleAnswer(answer));
       socket.on("webrtc_ice_candidate", async ({ candidate }) => await handleIce(candidate));
-      socket.on("peer_voted_queue", () => $("peer-hint").classList.add("show"));
+      socket.on("peer_voted_queue", () => {
+        $("checkmark-overlay").style.display = "flex";
+        $("ding-sound").currentTime = 0;
+        $("ding-sound").play().catch(() => {});
+      });
       socket.on("mutual_queue", ({ peerUsername }) => {
         stopTimer(); closePeerConnection();
         $("success-username").textContent = peerUsername || "NO USERNAME";
@@ -588,7 +619,6 @@
       $("btn-mic").textContent = micMuted ? "🔇 MIC OFF" : "🎙 MIC ON";
       $("btn-mic").classList.toggle("muted", micMuted);
       $("muted-badge").classList.toggle("show", micMuted);
-      $("your-avatar").classList.toggle("mic-active", !micMuted);
     });
 
     $("btn-another").addEventListener("click", async () => {
