@@ -391,7 +391,6 @@
     let micMuted = false, myVotedQueue = false;
     let profilePicDataUrl = null;
     let myProfile = { displayName: "", username: "", rank: "", role: "", region: "", pic: null };
-    let audioContext = null, analyser = null, micAnalysisInterval = null;
 
     const $ = id => document.getElementById(id);
 
@@ -479,24 +478,8 @@
 
     // WebRTC
     async function getMic() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        startAudioAnalysis();
-        return true;
-      }
+      try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); return true; }
       catch { alert("Microphone access is required. Please allow it and refresh."); return false; }
-    }
-
-    function startAudioAnalysis() {
-      if (!micAnalysisInterval) {
-        micAnalysisInterval = setInterval(() => {
-          if (localStream && localStream.getAudioTracks().length > 0) {
-            const track = localStream.getAudioTracks()[0];
-            const isActive = !micMuted && track.enabled && track.readyState === "live";
-            $("your-avatar").classList.toggle("mic-active", isActive);
-          }
-        }, 100);
-      }
     }
 
     function createPeerConnection() {
