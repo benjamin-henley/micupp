@@ -543,7 +543,7 @@
         $("ding-sound").play().catch(() => {});
       });
       socket.on("mutual_queue", ({ peerUsername }) => {
-        stopTimer(); closePeerConnection();
+        stopTimer();
         $("success-username").textContent = peerUsername || "NO USERNAME";
         $("success-overlay").classList.add("show");
       });
@@ -599,7 +599,7 @@
 
     $("btn-another").addEventListener("click", async () => {
       $("success-overlay").classList.remove("show");
-      resetPeerPanel(); resetQueueBtn(); setStatus("searching");
+      closePeerConnection(); resetPeerPanel(); resetQueueBtn(); setStatus("searching");
       if (!localStream) await getMic();
       socket.emit("join_queue", getQueuePayload());
     });
