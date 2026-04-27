@@ -531,7 +531,7 @@
       socket.on("match_found", async ({ roomId, isInitiator: init, peer }) => {
         currentRoomId = roomId; isInitiator = init;
         populatePeerPanel(peer); setStatus("connected"); startTimer(); resetQueueBtn();
-        $("peer-hint").classList.remove("show");
+        $("checkmark-overlay").style.display = "none";
         await startCall();
       });
       socket.on("webrtc_offer", async ({ offer }) => await handleOffer(offer));
