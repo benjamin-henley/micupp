@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MicUpp — Find Your Duo</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #0099cc;
+      --bg: #f5f5f5;
+      --bg2: #ffffff;
+      --bg3: #f0f0f0;
+      --border: #d0d0d0;
+      --border2: #b0b0b0;
+      --text: #000000;
+      --muted: #666666;
+      --muted2: #888888;
+      --success: #00a652;
+      --vt323: 'VT323', monospace;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--vt323); overflow: hidden; }
+
+    .screen { display: none; width: 100%; height: 100vh; }
+    .screen.active { display: flex; }
+
+    /* ===== ONBOARDING ===== */
+    #screen-onboarding {
+      align-items: center; justify-content: center; flex-direction: column;
+      background: var(--bg); position: relative;
+    }
+
+    #screen-onboarding::before {
+      content: ''; position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px);
+      pointer-events: none; z-index: 0;
+    }
+
+    .onboard-wrap {
+      position: relative; z-index: 1; width: 100%; max-width: 420px; padding: 24px;
+      animation: fadeUp 0.5s ease both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .logo { text-align: center; margin-bottom: 36px; }
+    .logo-main { font-family: var(--vt323); font-size: 72px; letter-spacing: 4px; color: var(--text); line-height: 1; }
+    .logo-main span { color: var(--accent); }
+    .logo-tag { font-family: var(--vt323); font-size: 16px; color: var(--muted); letter-spacing: 3px; margin-top: 4px; }
+
+    .onboard-card { background: var(--bg2); border: 1px solid var(--border); border-top: 3px solid var(--accent); padding: 28px; }
+    .card-title { font-family: var(--vt323); font-size: 14px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 20px; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .field { margin-bottom: 16px; }
+
+    label { display: block; font-family: var(--vt323); font-size: 14px; letter-spacing: 2px; color: var(--muted2); margin-bottom: 8px; text-transform: uppercase; }
+
+    select, input[type="text"] {
+      width: 100%; background: var(--bg3); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--vt323); font-size: 16px;
+      padding: 12px 14px; outline: none; transition: border-color 0.15s; appearance: none; border-radius: 0;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--red); }
+    input::placeholder { color: var(--muted); }
+
+    .pic-upload { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+    .pic-preview {
+      width: 56px; height: 56px; background: var(--bg3); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      overflow: hidden; cursor: pointer; transition: border-color 0.15s;
+    }
+    .pic-preview:hover { border-color: var(--accent); }
+    .pic-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .pic-preview svg { width: 24px; height: 24px; opacity: 0.3; }
+    .pic-right { flex: 1; }
+    .pic-btn {
+      background: none; border: 1px solid var(--border2); color: var(--muted2);
+      font-family: var(--vt323); font-size: 10px; letter-spacing: 2px;
+      padding: 7px 12px; cursor: pointer; transition: all 0.15s; width: 100%; margin-bottom: 5px;
+    }
+    .pic-btn:hover { border-color: var(--muted2); color: var(--text); }
+    .pic-hint { font-family: var(--vt323); font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+
+    .age-line {
+      font-family: var(--vt323); font-size: 10px; color: var(--muted); letter-spacing: 1px;
+      text-align: center; padding: 12px 0 4px; border-top: 1px solid var(--border); margin-top: 8px;
+    }
+
+    .btn-main {
+      width: 100%; background: var(--accent); border: none; color: #fff;
+      font-family: var(--vt323); font-size: 24px; letter-spacing: 3px;
+      padding: 16px; cursor: pointer; margin-top: 14px; transition: background 0.15s;
+    }
+    .btn-main:hover { background: #0088bb; }
+
+    .btn-skip-all {
+      display: block; text-align: center; font-family: var(--vt323); font-size: 14px;
+      color: var(--muted); letter-spacing: 2px; margin-top: 12px; cursor: pointer;
+      transition: color 0.15s; background: none; border: none; width: 100%;
+    }
+    .btn-skip-all:hover { color: var(--muted2); }
+
+    /* ===== MAIN SCREEN ===== */
+    #screen-main { flex-direction: column; background: var(--bg); }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 48px; border-bottom: 1px solid var(--border);
+      background: var(--bg2); flex-shrink: 0;
+    }
+    .topbar-logo { font-family: var(--vt323); font-size: 24px; letter-spacing: 3px; color: var(--text); }
+    .topbar-logo span { color: var(--accent); }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .status-pill { display: flex; align-items: center; gap: 6px; font-family: var(--vt323); font-size: 10px; letter-spacing: 2px; color: var(--muted2); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .status-dot.searching { background: #f5a623; animation: searchPulse 1s ease-in-out infinite; }
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    @keyframes searchPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .topbar-timer { font-family: var(--vt323); font-size: 12px; color: var(--muted); }
+
+    .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+    .panels { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); overflow: hidden; }
+    .panel { background: var(--bg2); display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .panel-label { position: absolute; top: 12px; left: 12px; font-family: var(--vt323); font-size: 9px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+
+    .avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; height: 100%; }
+    .avatar {
+      flex: 1; width: 100%; border: 3px solid transparent;
+      overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg3);
+      transition: border-color 0.2s;
+    }
+    .avatar.mic-active { border-color: var(--success); box-shadow: inset 0 0 12px rgba(0, 166, 82, 0.3); }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .avatar-icon { width: 100px; height: 100px; opacity: 0.1; }
+    .avatar-name { font-family: var(--vt323); font-size: 22px; letter-spacing: 2px; color: var(--text); }
+    .avatar-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .atag { font-family: var(--vt323); font-size: 9px; letter-spacing: 1px; padding: 3px 7px; border: 1px solid var(--border2); color: var(--muted2); }
+    .atag.rank-tag { border-color: rgba(0,153,204,0.4); color: var(--accent); }
+
+    .searching-overlay { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .search-ring {
+      width: 90px; height: 90px; border-radius: 50%; border: 1px solid var(--border2);
+      position: relative; display: flex; align-items: center; justify-content: center;
+    }
+    .search-ring::before {
+      content: ''; position: absolute; inset: -1px; border-radius: 50%;
+      border: 2px solid transparent; border-top-color: var(--accent); animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .search-ring-inner {
+      width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .search-ring-inner svg { width: 28px; height: 28px; opacity: 0.15; }
+    .search-text { font-family: var(--vt323); font-size: 11px; letter-spacing: 3px; color: var(--muted); animation: blink 1.4s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0.2; } }
+
+    .bottom-bar {
+      height: 80px; background: var(--bg2); border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; gap: 12px; flex-shrink: 0; padding: 0 20px;
+    }
+
+    .btn-queue {
+      background: var(--accent); border: none; color: #fff; font-family: var(--vt323);
+      font-size: 22px; letter-spacing: 3px; padding: 12px 48px; cursor: pointer;
+      transition: all 0.15s; min-width: 180px;
+    }
+    .btn-queue:hover { background: #0088bb; transform: translateY(-1px); }
+    .btn-queue.voted { background: #e8f5e9; border: 1px solid #a5d6a7; color: var(--success); cursor: default; transform: none; }
+
+    .btn-skip {
+      background: none; border: 1px solid var(--border2); color: var(--muted2);
+      font-family: var(--vt323); font-size: 22px; letter-spacing: 3px;
+      padding: 12px 48px; cursor: pointer; transition: all 0.15s; min-width: 180px;
+    }
+    .btn-skip:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-mic-sm {
+      background: var(--bg3); border: 1px solid var(--border); color: var(--muted2);
+      font-family: var(--vt323); font-size: 10px; letter-spacing: 2px;
+      padding: 10px 14px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-mic-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-mic-sm.muted { border-color: #ff6b6b; color: #ff6b6b; }
+
+    .peer-hint {
+      position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%);
+      font-family: var(--vt323); font-size: 18px; letter-spacing: 2px; color: var(--success);
+      white-space: nowrap; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .peer-hint.show { opacity: 1; }
+
+    .muted-badge {
+      position: absolute; bottom: 12px; right: 12px; background: #ff6b6b; color: #fff;
+      font-family: var(--vt323); font-size: 9px; letter-spacing: 2px; padding: 3px 7px; display: none;
+    }
+    .muted-badge.show { display: block; }
+
+    /* ===== SUCCESS ===== */
+    .success-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 200;
+      display: none; align-items: center; justify-content: center;
+    }
+    .success-overlay.show { display: flex; }
+    .success-card {
+      background: var(--bg2); border: 1px solid var(--border); border-top: 3px solid var(--success);
+      padding: 40px; max-width: 380px; width: 100%; text-align: center; animation: fadeUp 0.3s ease both;
+    }
+    .success-icon { font-size: 40px; margin-bottom: 16px; }
+    .success-title { font-family: var(--vt323); font-size: 40px; letter-spacing: 4px; color: var(--success); margin-bottom: 6px; }
+    .success-sub { font-family: var(--vt323); font-size: 11px; color: var(--muted); letter-spacing: 2px; margin-bottom: 28px; }
+    .success-username-box { background: var(--bg3); border: 1px solid #a5d6a7; padding: 16px; margin-bottom: 24px; }
+    .success-username-label { font-family: var(--vt323); font-size: 9px; color: var(--muted); letter-spacing: 3px; margin-bottom: 6px; }
+    .success-username-val { font-family: var(--vt323); font-size: 28px; letter-spacing: 2px; color: var(--text); }
+    .btn-another {
+      width: 100%; background: var(--accent); border: none; color: #fff;
+      font-family: var(--vt323); font-size: 20px; letter-spacing: 3px;
+      padding: 13px; cursor: pointer; transition: background 0.15s;
+    }
+    .btn-another:hover { background: #0088bb; }
+
+    #file-input, #remote-audio { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- ONBOARDING -->
+  <div id="screen-onboarding" class="screen active">
+    <div class="onboard-wrap">
+      <div class="logo">
+        <div class="logo-main">MIC <span>UPP</span></div>
+        <div class="logo-tag">FIND A FRIEND TO PLAY VALORANT WITH</div>
+      </div>
+      <div class="onboard-card">
+        <div class="card-title">// ENTER YOUR INFO — ALL OPTIONAL</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Rank</label>
+            <select id="input-rank">
+              <option value="">— Skip</option>
+              <option>Iron</option><option>Bronze</option><option>Silver</option>
+              <option>Gold</option><option>Platinum</option><option>Diamond</option>
+              <option>Ascendant</option><option>Immortal</option><option>Radiant</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Role</label>
+            <select id="input-role">
+              <option value="">— Skip</option>
+              <option>Duelist</option><option>Initiator</option>
+              <option>Controller</option><option>Sentinel</option><option>Flex</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Region</label>
+          <select id="input-region">
+            <option value="">— Skip</option>
+            <option>NA</option><option>EU</option><option>AP</option>
+            <option>KR</option><option>BR</option><option>LATAM</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Display Name (what they see)</label>
+          <input type="text" id="input-display-name" placeholder="e.g. Shadow" maxlength="50" />
+        </div>
+        <div class="field">
+          <label>Valorant Username (shared after queue)</label>
+          <input type="text" id="input-username" placeholder="e.g. ShadowFox#NA1" maxlength="50" />
+        </div>
+        <div class="pic-upload">
+          <div class="pic-preview" id="pic-preview" onclick="document.getElementById('file-input').click()">
+            <svg id="pic-default-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+            <img id="pic-img" src="" alt="" style="display:none;" />
+          </div>
+          <div class="pic-right">
+            <button class="pic-btn" onclick="document.getElementById('file-input').click()">UPLOAD PHOTO</button>
+            <div class="pic-hint">optional · jpg, png, gif</div>
+          </div>
+        </div>
+        <input type="file" id="file-input" accept="image/*" />
+        <div class="age-line">By continuing you confirm you are 18 or older</div>
+        <button class="btn-main" id="btn-start">FIND TEAMMATE</button>
+        <button class="btn-skip-all" id="btn-skip-all">skip setup and jump in →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="screen-main" class="screen">
+    <div class="topbar">
+      <div class="topbar-logo">MIC <span>UPP</span></div>
+      <div class="topbar-right">
+        <div class="status-pill">
+          <div class="status-dot" id="status-dot"></div>
+          <span id="status-text">SEARCHING</span>
+        </div>
+        <div class="topbar-timer" id="call-timer" style="display:none;">00:00</div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="panels">
+        <!-- YOU -->
+        <div class="panel" id="panel-you">
+          <div class="panel-label">YOU</div>
+          <div class="avatar-wrap">
+            <div class="avatar" id="your-avatar">
+              <svg class="avatar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div class="avatar-name" id="your-name">YOU</div>
+            <div class="avatar-tags" id="your-tags"></div>
+          </div>
+          <div class="muted-badge" id="muted-badge">MIC OFF</div>
+        </div>
+
+        <!-- PEER -->
+        <div class="panel" id="panel-peer">
+          <div class="panel-label">TEAMMATE</div>
+          <div class="searching-overlay" id="searching-overlay">
+            <div class="search-ring">
+              <div class="search-ring-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+            </div>
+            <div class="search-text">FINDING TEAMMATE...</div>
+          </div>
+          <div class="avatar-wrap" id="peer-connected" style="display:none;">
+            <div class="avatar" id="peer-avatar">
+              <svg class="avatar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div class="avatar-name" id="peer-name">—</div>
+            <div class="avatar-tags" id="peer-tags"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="peer-hint" id="peer-hint">⚡ TEAMMATE WANTS TO QUEUE</div>
+    </div>
+
+    <div class="bottom-bar">
+      <button class="btn-mic-sm" id="btn-mic">🎙 MIC ON</button>
+      <button class="btn-queue" id="btn-queue">QUEUE UP</button>
+      <button class="btn-skip" id="btn-skip">SKIP</button>
+    </div>
+  </div>
+
+  <!-- SUCCESS -->
+  <div class="success-overlay" id="success-overlay">
+    <div class="success-card">
+      <div class="success-icon">🎮</div>
+      <div class="success-title">QUEUE UP!</div>
+      <div class="success-sub">ADD THEM IN GAME AND GET TO WORK</div>
+      <div class="success-username-box">
+        <div class="success-username-label">THEIR USERNAME</div>
+        <div class="success-username-val" id="success-username">—</div>
+      </div>
+      <button class="btn-another" id="btn-another">FIND ANOTHER →</button>
+    </div>
+  </div>
+
+  <audio id="remote-audio" autoplay playsinline></audio>
+
+  <script>
+    const SERVER_URL = "http://localhost:3001";
+    const ICE_SERVERS = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] };
+
+    let socket = null, localStream = null, peerConnection = null;
+    let currentRoomId = null, isInitiator = false;
+    let timerInterval = null, timerSeconds = 0;
+    let micMuted = false, myVotedQueue = false;
+    let profilePicDataUrl = null;
+    let myProfile = { displayName: "", username: "", rank: "", role: "", region: "", pic: null };
+
+    const $ = id => document.getElementById(id);
+
+    function showScreen(name) {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      $(`screen-${name}`).classList.add("active");
+    }
+
+    // Profile pic
+    $("file-input").addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        profilePicDataUrl = ev.target.result;
+        $("pic-img").src = profilePicDataUrl;
+        $("pic-img").style.display = "block";
+        $("pic-default-icon").style.display = "none";
+      };
+      reader.readAsDataURL(file);
+    });
+
+    const defaultAvatarSVG = `<svg class="avatar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+
+    function buildTags(rank, role, region) {
+      let html = "";
+      if (rank) html += `<span class="atag rank-tag">${rank}</span>`;
+      if (role) html += `<span class="atag">${role}</span>`;
+      if (region) html += `<span class="atag">${region}</span>`;
+      return html;
+    }
+
+    function populateMyPanel() {
+      $("your-name").textContent = myProfile.displayName || "YOU";
+      $("your-tags").innerHTML = buildTags(myProfile.rank, myProfile.role, myProfile.region);
+      if (myProfile.pic) {
+        $("your-avatar").innerHTML = `<img src="${myProfile.pic}" style="width:100%;height:100%;object-fit:cover;" />`;
+      }
+    }
+
+    function populatePeerPanel(peer) {
+      $("peer-name").textContent = peer.displayName || "TEAMMATE";
+      $("peer-tags").innerHTML = buildTags(peer.rank, peer.role, peer.region);
+      $("peer-avatar").innerHTML = peer.pic
+        ? `<img src="${peer.pic}" style="width:100%;height:100%;object-fit:cover;" />`
+        : defaultAvatarSVG;
+      $("searching-overlay").style.display = "none";
+      $("peer-connected").style.display = "flex";
+    }
+
+    function resetPeerPanel() {
+      $("peer-name").textContent = "—";
+      $("peer-tags").innerHTML = "";
+      $("peer-avatar").innerHTML = defaultAvatarSVG;
+      $("searching-overlay").style.display = "flex";
+      $("peer-connected").style.display = "none";
+      $("peer-hint").classList.remove("show");
+    }
+
+    function setStatus(state) {
+      const dot = $("status-dot"), text = $("status-text");
+      dot.className = "status-dot";
+      if (state === "searching") { dot.classList.add("searching"); text.textContent = "SEARCHING"; $("call-timer").style.display = "none"; }
+      else if (state === "connected") { dot.classList.add("connected"); text.textContent = "CONNECTED"; $("call-timer").style.display = "block"; }
+      else { text.textContent = "IDLE"; $("call-timer").style.display = "none"; }
+    }
+
+    function startTimer() {
+      timerSeconds = 0;
+      timerInterval = setInterval(() => {
+        timerSeconds++;
+        const m = String(Math.floor(timerSeconds / 60)).padStart(2, "0");
+        const s = String(timerSeconds % 60).padStart(2, "0");
+        $("call-timer").textContent = `${m}:${s}`;
+      }, 1000);
+    }
+
+    function stopTimer() { clearInterval(timerInterval); timerInterval = null; }
+
+    function resetQueueBtn() {
+      myVotedQueue = false;
+      $("btn-queue").classList.remove("voted");
+      $("btn-queue").textContent = "QUEUE UP";
+    }
+
+    // WebRTC
+    async function getMic() {
+      try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); return true; }
+      catch { alert("Microphone access is required. Please allow it and refresh."); return false; }
+    }
+
+    function createPeerConnection() {
+      peerConnection = new RTCPeerConnection(ICE_SERVERS);
+      localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+      peerConnection.ontrack = e => { $("remote-audio").srcObject = e.streams[0]; };
+      peerConnection.onicecandidate = e => {
+        if (e.candidate) socket.emit("webrtc_ice_candidate", { roomId: currentRoomId, candidate: e.candidate });
+      };
+    }
+
+    async function startCall() {
+      createPeerConnection();
+      if (isInitiator) {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        socket.emit("webrtc_offer", { roomId: currentRoomId, offer });
+      }
+    }
+
+    async function handleOffer(offer) {
+      createPeerConnection();
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit("webrtc_answer", { roomId: currentRoomId, answer });
+    }
+
+    async function handleAnswer(answer) { await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); }
+    async function handleIce(candidate) { try { await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) {} }
+
+    function closePeerConnection() {
+      if (peerConnection) { peerConnection.close(); peerConnection = null; }
+      $("remote-audio").srcObject = null;
+    }
+
+    function getQueuePayload() {
+      return { displayName: myProfile.displayName, username: myProfile.username, rank: myProfile.rank, role: myProfile.role, region: myProfile.region, pic: myProfile.pic };
+    }
+
+    function rejoin() {
+      stopTimer(); closePeerConnection(); resetPeerPanel(); resetQueueBtn(); setStatus("searching");
+      socket.emit("join_queue", getQueuePayload());
+    }
+
+    function initSocket() {
+      socket = io(SERVER_URL);
+      socket.on("waiting", () => setStatus("searching"));
+      socket.on("match_found", async ({ roomId, isInitiator: init, peer }) => {
+        currentRoomId = roomId; isInitiator = init;
+        populatePeerPanel(peer); setStatus("connected"); startTimer(); resetQueueBtn();
+        $("peer-hint").classList.remove("show");
+        await startCall();
+      });
+      socket.on("webrtc_offer", async ({ offer }) => await handleOffer(offer));
+      socket.on("webrtc_answer", async ({ answer }) => await handleAnswer(answer));
+      socket.on("webrtc_ice_candidate", async ({ candidate }) => await handleIce(candidate));
+      socket.on("peer_voted_queue", () => $("peer-hint").classList.add("show"));
+      socket.on("mutual_queue", ({ peerUsername }) => {
+        stopTimer(); closePeerConnection();
+        $("success-username").textContent = peerUsername || "NO USERNAME";
+        $("success-overlay").classList.add("show");
+      });
+      socket.on("peer_skipped", () => rejoin());
+      socket.on("peer_disconnected", () => rejoin());
+      socket.on("connect", () => socket.emit("join_queue", getQueuePayload()));
+    }
+
+    async function launch() {
+      const gotMic = await getMic();
+      if (!gotMic) return;
+      showScreen("main");
+      populateMyPanel();
+      setStatus("searching");
+      resetPeerPanel();
+      if (!socket) initSocket();
+      else socket.emit("join_queue", getQueuePayload());
+    }
+
+    // Buttons
+    $("btn-start").addEventListener("click", () => {
+      myProfile = { displayName: $("input-display-name").value.trim(), username: $("input-username").value.trim(), rank: $("input-rank").value, role: $("input-role").value, region: $("input-region").value, pic: profilePicDataUrl };
+      launch();
+    });
+
+    $("btn-skip-all").addEventListener("click", () => {
+      myProfile = { displayName: "", username: "", rank: "", role: "", region: "", pic: null };
+      launch();
+    });
+
+    $("btn-queue").addEventListener("click", () => {
+      if (myVotedQueue || !currentRoomId) return;
+      myVotedQueue = true;
+      $("btn-queue").classList.add("voted");
+      $("btn-queue").textContent = "✓ QUEUED";
+      socket.emit("vote_queue");
+    });
+
+    $("btn-skip").addEventListener("click", () => {
+      if (!currentRoomId) return;
+      stopTimer(); closePeerConnection(); resetPeerPanel(); resetQueueBtn(); setStatus("searching");
+      socket.emit("vote_skip");
+    });
+
+    $("btn-mic").addEventListener("click", () => {
+      if (!localStream) return;
+      micMuted = !micMuted;
+      localStream.getAudioTracks().forEach(t => t.enabled = !micMuted);
+      $("btn-mic").textContent = micMuted ? "🔇 MIC OFF" : "🎙 MIC ON";
+      $("btn-mic").classList.toggle("muted", micMuted);
+      $("muted-badge").classList.toggle("show", micMuted);
+      $("your-avatar").classList.toggle("mic-active", !micMuted);
+    });
+
+    $("btn-another").addEventListener("click", async () => {
+      $("success-overlay").classList.remove("show");
+      resetPeerPanel(); resetQueueBtn(); setStatus("searching");
+      if (!localStream) await getMic();
+      socket.emit("join_queue", getQueuePayload());
+    });
+  </script>
+</body>
+</html>
