@@ -352,7 +352,7 @@
         </div>
       </div>
 
-      <div class="checkmark-overlay" id="checkmark-overlay" style="display:none;position:absolute;inset:0;flex-items:center;justify-content:center;background:rgba(0,166,82,0.9);border-radius:8px;font-size:80px;">✓</div>
+      <div class="checkmark-overlay" id="checkmark-overlay" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;background:rgba(0,166,82,0.95);border-radius:50%;font-size:40px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;z-index:10;">✓</div>
     </div>
 
     <div class="bottom-bar">
@@ -488,20 +488,13 @@
     }
 
     function startAudioAnalysis() {
-      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      if (!analyser) {
-        const source = audioContext.createMediaStreamSource(localStream);
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        source.connect(analyser);
-      }
       if (!micAnalysisInterval) {
         micAnalysisInterval = setInterval(() => {
-          const dataArray = new Uint8Array(analyser.frequencyBinCount);
-          analyser.getByteFrequencyData(dataArray);
-          const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-          const isActive = !micMuted && avg > 15;
-          $("your-avatar").classList.toggle("mic-active", isActive);
+          if (localStream && localStream.getAudioTracks().length > 0) {
+            const track = localStream.getAudioTracks()[0];
+            const isActive = !micMuted && track.enabled && track.readyState === "live";
+            $("your-avatar").classList.toggle("mic-active", isActive);
+          }
         }, 100);
       }
     }
